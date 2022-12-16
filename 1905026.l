@@ -1,8 +1,5 @@
 %option noyywrap
 
-%x CHAR_STATE
-%x STR_STATE
-%x SINGLE_COMMENT_STATE
 %x MULTI_COMMENT_STATE
 
 %{
@@ -13,408 +10,293 @@
 
 using namespace std;
 
-int line_count = 1;
-int error_count = 0;
-int nl_inside = 0;
+int lineCount = 1;
+int errorCount = 0;
+
+string comment;
 
 ofstream logOutput;
 ofstream tokenOutput;
 
-string resultString;
-string resultPlainTextString;
-
-string resultChar;
-string resultPlainTextChar;
-
-string commentString;
-
-char res_ch;
-
 int bucketSize = 10;
-SymbolTable symbolTable(bucket_size);
+SymbolTable symbolTable(bucketSize);
+
+int countNewLines(string str){
+	int count = 0;
+	for(int i=0;i<str.length();i++){
+		if(str[i]=='\n')
+			count++;
+	}
+	return count;
+}
+
+/*get actual string from the string literal*/
+string getPrintableString(string str){
+	string result = "";
+	for(int i=0;i<str.length();i++){
+		if(str[i]=='\\'){
+			if(str[i+1]=='n')
+				result += '\n';
+			if(str[i+1]=='t')
+				result += '\t';
+			if(str[i+1]=='a')
+				result += '\a';
+			if(str[i+1]=='f')
+				result += '\f';
+			if(str[i+1]=='r')
+				result += '\r';
+			if(str[i+1]=='b')
+				result += '\b';
+			if(str[i+1]=='v')
+				result += '\v';
+			if(str[i+1]=='0')
+				result += '\0';
+			if(str[i+1]=='\\')
+				result += '\\';
+			if(str[i+1]=='\'')
+				result += '\'';
+			if(str[i+1]=='\"')
+				result += '\"';
+			i++;
+		}
+		else if(str[i]=='\n'){
+			lineCount++;
+			// result += str[i];
+		}
+		else result += str[i];
+	}
+	return result;
+}
 
 %}
 
 WHITESPACE [ \t\f\r\v]+ 
 LETTER [a-zA-Z_]
 DIGIT [0-9]
+ALPHA_NUMERIC [a-zA-Z_0-9]
 NEWLINE [\r]?\n
 KEYWORDS if|else|for|while|do|break|int|char|float|double|void|return|switch|case|default|continue
-ALPHA_NUMERIC [A-Za-z_0-9]
-/* ALL_EXCEPT_BACKSLASH [^\\] */
 
 %%
 
 {WHITESPACE} {}
 
-{NEWLINE} {line_count++;}
+{NEWLINE} {lineCount++;}
 
 {KEYWORDS}	{
-				string token = "";
-				for(char ch:yytext)token+=toupper(ch);
-				tokenOutput<<"<"<<token<<", "<<yytext<<"> "<<endl;
-				logOutput<<"Line# "<<line_count<<": Token <"<<token<<"> Lexeme "<<yytext<<" found"<<endl;
-			}
-
-{DIGIT}+	{
-				tokenOutput<<"<CONST_INT,"<<yytext<<"> ";
-				logOutput<<"Line# "<<line_count<<": Token <CONST_INT> Lexeme "<<yytext<<" found"<<endl;	
-			}
-
-{DIGIT}*(\.{DIGIT}+)?([Ee][+-]?{DIGIT}+)?	{
-				tokenOutput<<"<CONST_FLOAT,"<<yytext<<"> ";
-				logOutput<<"Line no "<< line_count <<": Token <CONST_FLOAT> Lexeme "<<yytext<<" found"<<endl;
-			}
-
-{DIGIT}*(\.{DIGIT}+)\.[0-9\.Ee+-]*(\.)* {
-	error_count++;
-	logOutput<<"Error at line no "<< line_count <<": Too many decimal points "<<yytext<<"\n"<<endl;
-}
-
-([0-9]*(\.[0-9]*)?[Ee][+-]?[0-9]*[0-9\.Ee+-]*(\.)*)|([0-9]+\.) {
-	error_count++;
-	logOutput<<"Error at line no "<< line_count <<": Ill formed number "<<yytext<<"\n"<<endl;
+	string token = "",temp=yytext;
+	for(char ch:temp)token+=toupper(ch);
+	tokenOutput<<"<"<<token<<", "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<<lineCount<<": Token <"<<token<<"> Lexeme "<<yytext<<" found"<<endl;
 }
 
 {LETTER}{ALPHA_NUMERIC}*	{
-		tokenOutput<<"<ID,"<<yytext<<"> ";
-		logOutput<<"Line# "<< line_count <<": Token " <<"<ID>"<<" Lexeme "<<yytext<<" found\n"<<endl;
-		
-		if(symbolTable.insertSymbol(SymbolInfo(yytext,"ID"),logOutput))
-		{
-			symbolTable.printAllScope(logOutput);
-		}
+	tokenOutput<<"<ID, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <ID> Lexeme "<<yytext<<" found"<<endl;
+	string temp=yytext;
+	if(symbolTable.insertSymbol(temp,"ID")){
+		symbolTable.printAllScope(logOutput);
+	}
+	else {
+		logOutput<<"\t"<<yytext<<" already exisits in the current ScopeTable"<<endl;
+	}
 }
 
-{DIGIT}*(\.{DIGIT}+)?(E[+-]?{DIGIT}+)?{LETTER}{ALPHA_NUMERIC}* {
-	error_count++;
-	logOutput<<"Error at line no "<< line_count <<": Invalid prefix on ID or invalid suffix on Number "<<yytext<<"\n"<<endl;
+{DIGIT}+	{
+	tokenOutput<<"<CONST_INT, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<<lineCount<<": Token <CONST_INT> Lexeme "<<yytext<<" found"<<endl;	
+}
+
+{DIGIT}*(\.{DIGIT}+)?([Ee][+-]?{DIGIT}+)?	{
+	tokenOutput<<"<CONST_FLOAT, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <CONST_FLOAT> Lexeme "<<yytext<<" found"<<endl;
+}
+
+{DIGIT}*(\.{DIGIT}+)\.[0-9\.Ee+-]*(\.)* {
+	errorCount++;
+	logOutput<<"Error at line# "<< lineCount <<": TOO_MANY_DECIMAL_POINTS "<<yytext<<endl;
+}
+
+({DIGIT}*(\.{DIGIT}*)?[Ee][+-]?[0-9\.Ee+-]*(\.)*)|({DIGIT}+\.) {
+	errorCount++;
+	logOutput<<"Error at line# "<< lineCount <<": ILLFORMED_NUMBER "<<yytext<<endl;
+}
+
+{DIGIT}+{ALPHA_NUMERIC}+ {
+	errorCount++;
+	logOutput<<"Error at line# "<< lineCount <<": INVALID_ID_SUFFIX_NUM_PREFIX "<<yytext<<endl;
+}
+
+\/\/(([^\\\r\n]|\\[^rn])*(\\[\r]?\n)*)*	{
+	string temp=yytext;
+	int lineCountAdd=countNewLines(temp);
+	if(temp[temp.length()-1]=='\n')temp=temp.substr(0,temp.length()-2);
+	logOutput<<"Line# "<< lineCount <<": Token <SINGLE LINE COMMENT> Lexeme "<<temp<<" found"<<endl;
+	lineCount+=lineCountAdd;
+}
+
+\/\* {
+	comment=yytext;
+	BEGIN MULTI_COMMENT_STATE;
 }
 
 "+"|"-"	{
-		tokenOutput<<"<ADDOP,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<ADDOP>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<ADDOP, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <ADDOP> Lexeme "<<yytext<<" found"<<endl;
 }
 
 "*"|"/"|"%"	{
-		tokenOutput<<"<MULOP,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<MULOP>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<MULOP, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <MULOP> Lexeme "<<yytext<<" found"<<endl;
 }
 
 "++"|"--"	{
-		tokenOutput<<"<INCOP,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<INCOP>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<INCOP, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <INCOP> Lexeme "<<yytext<<" found\n"<<endl;
 }
 
 "<"|"<="|">"|">="|"=="|"!="	{
-		tokenOutput<<"<RELOP,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<RELOP>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<RELOP, "<<yytext<<">"<<endl;
+	logOutput<<"Line#"<< lineCount <<": Token <RELOP> Lexeme "<<yytext<<" found\n"<<endl;
 }
 
 "="	{
-		tokenOutput<<"<ASSIGNOP,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<ASSIGNOP>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<ASSIGNOP, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <ASSIGNOP> Lexeme "<<yytext<<" found"<<endl;
 }
 
 "&&"|"||"	{
-		tokenOutput<<"<LOGICOP,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<LOGICOP>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<LOGICOP, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <LOGICOP> Lexeme "<<yytext<<" found"<<endl;
 }
 
 "!"	{
-		tokenOutput<<"<NOT,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<NOT>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<NOT, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <NOT> Lexeme "<<yytext<<" found"<<endl;
 }
 
 "("	{
-		tokenOutput<<"<LPAREN,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<LPAREN>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<LPAREN, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <LPAREN> Lexeme "<<yytext<<" found"<<endl;
 }
 
 ")"	{
-		tokenOutput<<"<RPAREN,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<RPAREN>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<RPAREN, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <RPAREN> Lexeme "<<yytext<<" found"<<endl;
 }
 
 "{"	{
-		tokenOutput<<"<LCURL,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<LCURL>"<<" Lexeme "<<yytext<<" found\n"<<endl;
-
-		symbolTable.enter_scope();
+	tokenOutput<<"<LCURL, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <LCURL> Lexeme "<<yytext<<" found"<<endl;
+	symbolTable.enterScope();
 }
 
 "}"	{
-		tokenOutput<<"<RCURL,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<RCURL>"<<" Lexeme "<<yytext<<" found\n"<<endl;
-
-		symbolTable.exit_scope();
+	tokenOutput<<"<RCURL, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <RCURL> Lexeme "<<yytext<<" found"<<endl;
+	symbolTable.exitScope();
 }
 
 "["	{
-		tokenOutput<<"<LTHIRD,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<LTHIRD>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<LSQUARE, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <LSQUARE> Lexeme "<<yytext<<" found"<<endl;
 }
 
 "]"	{
-		tokenOutput<<"<RTHIRD,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<RTHIRD>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<RSQUARE, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <RSQUARE> Lexeme "<<yytext<<" found"<<endl;
 }
 
 ","	{
-		tokenOutput<<"<COMMA,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<COMMA>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<COMMA, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <COMMA> Lexeme "<<yytext<<" found"<<endl;
 }
 
 ";"	{
-		tokenOutput<<"<SEMICOLON,"<<yytext<<"> ";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<SEMICOLON>"<<" Lexeme "<<yytext<<" found\n"<<endl;
+	tokenOutput<<"<SEMICOLON, "<<yytext<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <SEMICOLON> Lexeme "<<yytext<<" found"<<endl;
 }
 
-\'	{
-	ans_char.clear();
-	ans_char_plain.clear();
-	BEGIN CHAR_STATE;
-	// logOutput<<"CHAR_STATE started"<<endl;
+'(\\[nt\\'afrbv0]|[^\\'])'	{
+	string temp=getPrintableString(yytext);
+	tokenOutput<<"<CONST_CHAR, "<<temp.substr(1,temp.length()-2)<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <CONST_CHAR> Lexeme "<<temp.substr(1,temp.length()-2)<<" found"<<endl;
 }
 
+'(\\[nt\\'afrbv0]|[^\\\n'])+'	{
+	errorCount++;
+	logOutput<<"Error at line# "<< lineCount <<": MULTICHAR_CONST_CHAR "<<yytext<<endl;
+}
 
-\"	{
-	res.clear();
-	res_plain.clear();
+'\\'|'[^'\n]*\n	{
+	errorCount++;
+	string temp=yytext;
+	int addLineCount=0;
+	if(temp[temp.length()-1]=='\n'){
+		addLineCount=1;
+		temp=temp.substr(0,temp.length()-2);
+	}
+	logOutput<<"Error at line# "<< lineCount <<": UNFINISHED_CONST_CHAR "<<temp<<endl;
+	lineCount+=addLineCount;
+}
 
-	nl_inside = 0;
+'\\'|'[^'\n]*	{
+	errorCount++;
+	string temp=yytext;
+	int addLineCount=0;
+	logOutput<<"Error at line# "<< lineCount <<": UNFINISHED_CONST_CHAR "<<temp<<endl;
+	lineCount+=addLineCount;
+}
 
-	BEGIN STR_STATE;
-	// logOutput<<"STR_STATE started"<<endl;
-}	
+''	{
+	errorCount++;
+	logOutput<<"Error at line# "<< lineCount <<": EMPTY_CONST_CHAR "<<yytext<<endl;
+}
 
-\/\/	{
-	comment.clear();
-	comment += "//";
+\"([^\"\\\n]|\\[nt\\'afrbv0])*\"	{
+	string temp=yytext;
+	temp=getPrintableString(temp.substr(1,temp.length()-2));
+	tokenOutput<<"<SINGLE LINE STRING, "<<temp<<">"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <SINGLE LINE STRING> Lexeme "<<yytext<<" found"<<endl;
+}
 
-	nl_inside = 0;
+\"(([^\"\\\r\n]|\\[nt\\'afrbv0])*(\\[\r]?\n)*)*\"	{
+	string temp=yytext;
+	logOutput<<"Line# "<< lineCount <<": Token <MULTI LINE STRING> Lexeme "<<yytext<<" found"<<endl;
+	temp=getPrintableString(temp.substr(1,temp.length()-2));
+	tokenOutput<<"<MULTI LINE STRING, "<<temp<<">"<<endl;
+}
 
-	BEGIN SINGLE_COMMENT_STATE;
-	// logOutput<<"SINGLE_COMMENT_STATE started"<<endl;
-}	
+\"(([^\"\\\r\n]|\\[nt\\'afrbv0])*(\\[\r]?\n)*)*	{
+	errorCount++;
+	string temp=yytext;
+	if(temp[temp.length()-1]=='\n')temp.pop_back();
+	lineCount+=countNewLines(temp);
+	//just to count the newlines in the string
+	logOutput<<"Error at line# "<< lineCount <<": UNFINISHED_STRING "<<yytext<<endl;
+}
 
-\/\*	{
-	comment.clear();
-	comment += "/*";
-
-	nl_inside = 0;
-
-	BEGIN MULTI_COMMENT_STATE;
-	// logOutput<<"MULTI_COMMENT_STATE started"<<endl;
-}	
-
-<CHAR_STATE>\\\\         ans_char += "\\", ans_char_plain +="\\\\";
-<CHAR_STATE>\\\'         ans_char += "\'", ans_char_plain +="\\\'";
-<CHAR_STATE>\\\"         ans_char += "\"", ans_char_plain +="\\\"";
-<CHAR_STATE>\\a			 ans_char += "\a", ans_char_plain +="\\a";
-<CHAR_STATE>\\b          ans_char += "\b", ans_char_plain +="\\b";
-<CHAR_STATE>\\f          ans_char += "\f", ans_char_plain +="\\f";
-<CHAR_STATE>\\n          ans_char += "\n", ans_char_plain +="\\n";
-<CHAR_STATE>\\r          ans_char += "\r", ans_char_plain +="\\r";
-<CHAR_STATE>\\t          ans_char += "\t", ans_char_plain +="\\t";
-<CHAR_STATE>\\v          ans_char += "\v", ans_char_plain +="\\v";
-<CHAR_STATE>\\0			 ans_char += "\0", ans_char_plain +="\\0";
-
-
-<CHAR_STATE><<EOF>> {
-	string for_print = "'"; 
-	for_print += ans_char_plain;
-
-	error_count++;
-	logOutput<<"Error at line no "<< line_count <<": Unterminated character "<<for_print<<"\n"<<endl;
-
+<MULTI_COMMENT_STATE>\*\/	{
+	comment+="*/";
+	logOutput<<"Line# "<< lineCount-countNewLines(comment) <<": Token <MULTI LINE COMMENT> Lexeme "<<comment<<" found"<<endl;
+	BEGIN INITIAL;
+	}
+<MULTI_COMMENT_STATE>\n	{
+	comment+='\n';
+	lineCount++;
+}
+<MULTI_COMMENT_STATE><<EOF>>	{
+	errorCount++;
+	logOutput<<"Error at line# "<< lineCount <<": UNFINISHED_COMMENT "<<comment<<endl;
 	BEGIN INITIAL;
 }
-
-<CHAR_STATE>\'	{
-
-	string for_print = "'"; 
-	for_print += ans_char_plain;
-	for_print += "'";
-
-	if((int)ans_char.size()==0)
-	{
-		if(ans_char_plain=="\\0")
-		{
-			tokenOutput<<"<CHAR_CONST,"<<ans_char<<"> ";
-			logOutput<<"Line no "<< line_count <<": Token " <<"<CONST_CHAR>"<<" Lexeme "<<for_print<<" found --> <CHAR_CONST,"<<ans_char<<">\n"<<endl;
-
-			if(symbolTable.insertSymbol(SymbolInfo(for_print,"CONST_CHAR"),logOutput))
-			{
-				symbolTable.printAllScope(logOutput);
-			}
-		}
-		else
-		{
-			error_count++;
-			logOutput<<"Error at line no "<< line_count <<": Empty character constant error "<<for_print<<"\n"<<endl;
-		}
-	}
-	else if((int)ans_char.size()==1)
-	{
-			tokenOutput<<"<CHAR_CONST,"<<ans_char<<"> ";
-			logOutput<<"Line no "<< line_count <<": Token " <<"<CONST_CHAR>"<<" Lexeme "<<for_print<<" found --> <CHAR_CONST,"<<ans_char<<">\n"<<endl;
-
-			if(symbolTable.insertSymbol(SymbolInfo(for_print,"CONST_CHAR"),logOutput))
-			{
-				symbolTable.printAllScope(logOutput);
-			}
-	}
-	else
-	{
-			error_count++;
-			logOutput<<"Error at line no "<< line_count <<": Multi character constant error "<<for_print<<"\n"<<endl;
-			BEGIN INITIAL;
-	}
-
-	BEGIN INITIAL;
+<MULTI_COMMENT_STATE>.	{
+	comment+=yytext;
 }
-
-<CHAR_STATE>[\r]?\n {
-
-	string for_print = "'"; 
-	for_print += ans_char_plain;
-
-	error_count++;
-	logOutput<<"Error at line no "<< line_count <<": Unterminated character "<<for_print<<"\n"<<endl;
-
-	line_count++;
-	BEGIN INITIAL;
-}
-
-<CHAR_STATE>.		ans_char += yytext[0] , ans_char_plain += yytext[0];
-
-
-<STR_STATE>\\\\         res += "\\", res_plain +="\\\\";
-<STR_STATE>\\\'         res += "\'", res_plain +="\\\'";
-<STR_STATE>\\\"         res += "\"", res_plain +="\\\"";
-<STR_STATE>\\a			res += "\a", res_plain +="\\a";
-<STR_STATE>\\b          res += "\b", res_plain +="\\b";
-<STR_STATE>\\f          res += "\f", res_plain +="\\f";
-<STR_STATE>\\n          res += "\n", res_plain +="\\n";
-<STR_STATE>\\r          res += "\r", res_plain +="\\r";
-<STR_STATE>\\t          res += "\t", res_plain +="\\t";
-<STR_STATE>\\v          res += "\v", res_plain +="\\v";
-<STR_STATE>\\0         	res += "\0", res_plain +="\\0";
-
-<STR_STATE>\\\r\n         { 
-	nl_inside++;
-	res_plain += "\\\r\n" ;
-	// logOutput<<"OK ESCAPE"<<endl; 
-	}
-<STR_STATE>\\\n         { 
-	nl_inside++;
-	res_plain += "\\\n" ;
-	// logOutput<<"OK ESCAPE"<<endl; 
-	}
-<STR_STATE>[\r]?\n { 
-		nl_inside++;
-		error_count++;
-		logOutput<<"Error at line no "<< line_count <<": Unterminated String \""<<res_plain<<"\n"<<endl;
-
-		line_count += nl_inside;
-		nl_inside = 0;
-
-		BEGIN(INITIAL);
-	}
-<STR_STATE><<EOF>>      { 
-		error_count++;
-		logOutput<<"Error at line no "<< line_count <<": Unterminated String \""<<res_plain<<"\n"<<endl;
-
-		line_count += nl_inside;
-		nl_inside = 0;
-		 
-		BEGIN(INITIAL);
-	}
-
-<STR_STATE>\"           {
-							string for_print = "\"";
-							for_print += res_plain;
-							for_print += "\"";
-							
-							tokenOutput<<"<STRING,"<<"\""<<res<<"\"> ";
-                         	logOutput<<"Line no "<< line_count <<": Token " <<"<STRING>"<<" Lexeme "<<for_print<<" found --> <STRING,\""<<res<<"\">\n"<<endl;
-                         	
-							line_count += nl_inside;
-							nl_inside = 0;
-							 
-							BEGIN(INITIAL);
-                     	}
-
-<STR_STATE>.            {res += yytext[0]; res_plain+= yytext[0];}
-
-<SINGLE_COMMENT_STATE>\\\r\n         { 
-	nl_inside++;
-	comment += "\\\r\n";
-	// logOutput<<"OK ESCAPE SINGLE COMMENT"<<endl; 
-	}
-
-<SINGLE_COMMENT_STATE>\\\n         { 
-	nl_inside++;
-	comment += "\\\n";
-	// logOutput<<"OK ESCAPE SINGLE COMMENT"<<endl; 
-	}
-
-<SINGLE_COMMENT_STATE>[\r]?\n           { 
-		
-		// logOutput<<"SINGLE COMMENT FINISHED "<<comment<<endl; 
-		nl_inside++;
-		logOutput<<"Line no "<< line_count <<": Token " <<"<COMMENT>"<<" Lexeme "<<comment<<" found\n"<<endl;
-		
-		line_count += nl_inside;
-		nl_inside = 0;
-		
-		BEGIN(INITIAL);
-	}
-<SINGLE_COMMENT_STATE><<EOF>>      { 
-
-		// logOutput<<"SINGLE COMMENT FINISHED "<<comment<<endl; 
-		logOutput<<"Line no "<< line_count <<": Token " <<"<COMMENT>"<<" Lexeme "<<comment<<" found\n"<<endl;
-
-		line_count += nl_inside;
-		nl_inside = 0;
-		
-		BEGIN(INITIAL);
-	}
-
-<SINGLE_COMMENT_STATE>\\           { comment += "\\";}
-<SINGLE_COMMENT_STATE>.            { comment += yytext[0];} 
-
-
-<MULTI_COMMENT_STATE>\*\/       { 
-		//logOutput<<"DOUBLE COMMENT FINISHED "<<comment<<endl; 
-		comment += "*/";
-		logOutput<<"Line no "<< line_count <<": Token " <<"<COMMENT>"<<" Lexeme "<<comment<<" found\n"<<endl;
-		
-		line_count += nl_inside;
-		nl_inside = 0;
-		
-		BEGIN(INITIAL);
-	}
-
-<MULTI_COMMENT_STATE><<EOF>>       { 
-
-		error_count++;
-		logOutput<<"Error at line no "<< line_count <<": Unterminated Comment "<<comment<<"\n"<<endl;
-		
-		line_count += nl_inside;
-		nl_inside = 0;
-		
-		BEGIN(INITIAL);
-	}
-
-<MULTI_COMMENT_STATE>\r            { comment += "\r";} 
-<MULTI_COMMENT_STATE>\n            { nl_inside++; comment += "\n";} 
-<MULTI_COMMENT_STATE>.            { comment += yytext[0];} 
 
 . {
-	error_count++;
-	logOutput<<"Error at line no "<< line_count <<": Unrecognized character "<<yytext<<"\n"<<endl;
+	errorCount++;
+	logOutput<<"Error at line# "<< lineCount <<": UNRECOGNIZED_CHAR "<<yytext<<endl;
 }
 
 %%
@@ -426,23 +308,23 @@ int main(int argc,char *argv[]){
 		return 0;
 	}
 	
-	FILE *fin=fopen(argv[1],"r");
-	if(fin==NULL){
+	FILE *fileInput=fopen(argv[1],"r");
+	if(fileInput==NULL){
 		printf("Cannot open specified file\n");
 		return 0;
 	}
 
-	tokenOutput.open("1705010_token.txt");
-	logOutput.open("1705010_log.txt");
+	tokenOutput.open("1905026_token.txt");
+	logOutput.open("1905026_log.txt");
 
-	yyin= fin;
+	yyin= fileInput;
 	yylex();
 	fclose(yyin);
 
 	symbolTable.printAllScope(logOutput);
 
-	logOutput<<"Total lines: "<<line_count<<endl;
-	logOutput<<"Total errors: "<<error_count<<endl;
+	logOutput<<"Total lines: "<<lineCount<<endl;
+	logOutput<<"Total errors: "<<errorCount<<endl;
 
 	tokenOutput.close();
 	logOutput.close();

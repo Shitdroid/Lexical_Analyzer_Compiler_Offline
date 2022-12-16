@@ -8,13 +8,13 @@ class ScopeTable {
     ScopeTable *parentScope;
 public:
     //hash function
-    unsigned int SDBMHash(std::string str){
-        unsigned int hash = 0;
+    unsigned long long SDBMHash(std::string str){
+        unsigned long long hash = 0;
         for (int i = 0; i < str.length(); i++)
         {
-            hash = (str[i] + (hash << 6) + (hash << 16) - hash)%size;
+            hash = (str[i] + (hash << 6) + (hash << 16) - hash);
         }
-        return hash;
+        return hash%size;
     }
     //constructor
     ScopeTable(int size, int id, ScopeTable *parentScope) {
@@ -111,6 +111,7 @@ public:
 
     //print Table
     void printTable(std::ofstream &out){
+        out<<"\tScopeTable# "<<id<<std::endl;
         for (int i = 1; i <= size; i++) {
             SymbolInfo *temp = table[i-1];
             if(temp!=NULL)out<<"\t"<<i<<"--> ";
@@ -118,6 +119,7 @@ public:
                 out<<"<"<<temp->getName()<<","<<temp->getType()<<"> ";
                 temp = temp->getNext();
             }
+            if(table[i-1]!=NULL)out<<std::endl;
         }
     }
 
