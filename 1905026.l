@@ -127,7 +127,7 @@ KEYWORDS if|else|for|while|do|break|int|char|float|double|void|return|switch|cas
 	logOutput<<"Error at line# "<< lineCount <<": INVALID_ID_SUFFIX_NUM_PREFIX "<<yytext<<endl;
 }
 
-\/\/(([^\\\r\n]|\\[^rn])*(\\[\r]?\n)*)*	{
+\/\/(([^\\\r\n]|\\[^\r\n])*(\\[\r]?\n)*)*	{
 	string temp=yytext;
 	int lineCountAdd=countNewLines(temp);
 	if(temp[temp.length()-1]=='\n')temp=temp.substr(0,temp.length()-2);
