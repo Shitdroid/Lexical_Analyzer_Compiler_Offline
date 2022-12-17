@@ -57,11 +57,9 @@ string getPrintableString(string str){
 				result += '\'';
 			if(str[i+1]=='\"')
 				result += '\"';
+			if(str[i]=='\n')
+				lineCount++;
 			i++;
-		}
-		else if(str[i]=='\n'){
-			lineCount++;
-			// result += str[i];
 		}
 		else result += str[i];
 	}
@@ -152,12 +150,12 @@ KEYWORDS if|else|for|while|do|break|int|char|float|double|void|return|switch|cas
 
 "++"|"--"	{
 	tokenOutput<<"<INCOP, "<<yytext<<">"<<endl;
-	logOutput<<"Line# "<< lineCount <<": Token <INCOP> Lexeme "<<yytext<<" found\n"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <INCOP> Lexeme "<<yytext<<" found"<<endl;
 }
 
 "<"|"<="|">"|">="|"=="|"!="	{
 	tokenOutput<<"<RELOP, "<<yytext<<">"<<endl;
-	logOutput<<"Line#"<< lineCount <<": Token <RELOP> Lexeme "<<yytext<<" found\n"<<endl;
+	logOutput<<"Line# "<< lineCount <<": Token <RELOP> Lexeme "<<yytext<<" found"<<endl;
 }
 
 "="	{
@@ -228,43 +226,37 @@ KEYWORDS if|else|for|while|do|break|int|char|float|double|void|return|switch|cas
 	logOutput<<"Error at line# "<< lineCount <<": MULTICHAR_CONST_CHAR "<<yytext<<endl;
 }
 
-'\\'|'[^'\n]*\n	{
+'\\'|'[^']	{
 	errorCount++;
 	string temp=yytext;
 	int addLineCount=0;
 	if(temp[temp.length()-1]=='\n'){
 		addLineCount=1;
-		temp=temp.substr(0,temp.length()-2);
+		temp=temp.substr(0,temp.length()-1);
 	}
 	logOutput<<"Error at line# "<< lineCount <<": UNFINISHED_CONST_CHAR "<<temp<<endl;
 	lineCount+=addLineCount;
 }
 
-'\\'|'[^'\n]*	{
-	errorCount++;
-	string temp=yytext;
-	int addLineCount=0;
-	logOutput<<"Error at line# "<< lineCount <<": UNFINISHED_CONST_CHAR "<<temp<<endl;
-	lineCount+=addLineCount;
-}
 
 ''	{
 	errorCount++;
 	logOutput<<"Error at line# "<< lineCount <<": EMPTY_CONST_CHAR "<<yytext<<endl;
 }
 
-\"([^\"\\\n]|\\[nt\\'afrbv0])*\"	{
+\"([^\"\\\n]|\\[nt\\\"\'afrbv0])*\"	{
 	string temp=yytext;
 	temp=getPrintableString(temp.substr(1,temp.length()-2));
 	tokenOutput<<"<SINGLE LINE STRING, "<<temp<<">"<<endl;
 	logOutput<<"Line# "<< lineCount <<": Token <SINGLE LINE STRING> Lexeme "<<yytext<<" found"<<endl;
 }
 
-\"(([^\"\\\r\n]|\\[nt\\'afrbv0])*(\\[\r]?\n)*)*\"	{
+\"(([^\"\\\r\n]|\\[nt\\\"\'afrbv0])*(\\[\r]?\n)*)*\"	{
 	string temp=yytext;
-	logOutput<<"Line# "<< lineCount <<": Token <MULTI LINE STRING> Lexeme "<<yytext<<" found"<<endl;
 	temp=getPrintableString(temp.substr(1,temp.length()-2));
+	logOutput<<"Line# "<< lineCount <<": Token <MULTI LINE STRING> Lexeme "<<yytext<<" found"<<endl;
 	tokenOutput<<"<MULTI LINE STRING, "<<temp<<">"<<endl;
+	lineCount+=countNewLines(yytext);
 }
 
 \"(([^\"\\\r\n]|\\[nt\\'afrbv0])*(\\[\r]?\n)*)*	{
